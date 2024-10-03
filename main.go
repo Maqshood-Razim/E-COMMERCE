@@ -14,9 +14,9 @@ func main() {
 	config.InitDB()
 	r := routes.InitRoutes()
 
-	stripe.Key = os.Getenv("sk_test_51Q3VaJP8UEcGEhHsoMSaJV7OzABvuJDya5Vy0CHib5Z6V0Dee4MVVBAzx95NwOpMXQ5z0ylaCwC03xtVy2lteyfc00pGTq7MwRZ") // or directly assign your key here
+	stripe.Key = os.Getenv("sk_test_51Q3VaJP8UEcGEhHsoMSaJV7OzABvuJDya5Vy0CHib5Z6V0Dee4MVVBAzx95NwOpMXQ5z0ylaCwC03xtVy2lteyfc00pGTq7MwRZ") 
 
-	// Optionally, you can create a client
+	// create a client
 	sc := &client.API{}
 	sc.Init(stripe.Key, nil)
 
