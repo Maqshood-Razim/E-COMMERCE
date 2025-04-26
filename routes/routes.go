@@ -21,7 +21,7 @@ func InitRoutes() *gin.Engine {
 	{
 		protected.POST("/cart/add", controllers.AddToCart)
 		protected.DELETE("/cart/remove/:id", controllers.RemoveFromCart)
-		protected.GET("/cart", controllers.GetCart)
+		// protected.GET("/cart", controllers.GetCart)
 		protected.GET("/order/details", controllers.OrderDetails)
 		protected.POST("/payment/process", controllers.ProcessPayment)
 		protected.POST("/checkout", controllers.Checkout)

@@ -1,7 +1,9 @@
+// controllers/checkout.go
 package controllers
 
 import (
 	"furniture-ecommerce/config"
+	"furniture-ecommerce/kafka"
 	"furniture-ecommerce/models"
 	"log"
 	"net/http"
@@ -9,8 +11,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type OrderEvent struct {
+	OrderID    uint    `json:"order_id"`
+	UserID     uint    `json:"user_id"`
+	TotalPrice float64 `json:"total_price"`
+	Status     string  `json:"status"`
+}
+
 func Checkout(c *gin.Context) {
-	// Retrieve user ID and other details from the JSON request
 	var checkoutRequest struct {
 		Name        string `json:"name"`
 		PhoneNumber string `json:"phone_number"`
@@ -20,13 +28,11 @@ func Checkout(c *gin.Context) {
 		Price       uint   `json:"price"`
 	}
 
-	// Bind the JSON request to the struct
 	if err := c.ShouldBindJSON(&checkoutRequest); err != nil {
 		log.Printf("Error binding JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-
 
 	var user models.User
 	if result := config.DB.Where("id = ?", checkoutRequest.UserID).First(&user); result.Error != nil {
@@ -35,7 +41,6 @@ func Checkout(c *gin.Context) {
 		return
 	}
 
-	// Retrieve the user's cart items
 	var cart []models.Cart
 	if result := config.DB.Where("user_id = ?", checkoutRequest.UserID).Find(&cart); result.Error != nil || len(cart) == 0 {
 		log.Printf("Cart retrieval error or cart empty: %v", result.Error)
@@ -43,10 +48,6 @@ func Checkout(c *gin.Context) {
 		return
 	}
 
-	
-	log.Printf("Processing checkout for user ID: %d with %d items in cart\n", checkoutRequest.UserID, len(cart))
-
-	// Calculate the total price of the products in the cart
 	var totalPrice uint
 	var correctPrice uint
 	for _, cartItem := range cart {
@@ -58,16 +59,11 @@ func Checkout(c *gin.Context) {
 		}
 		totalPrice += product.Price * cartItem.Quantity
 
-		// Check if this is the product the user is checking out
 		if product.ID == checkoutRequest.ProductID {
 			correctPrice = product.Price * cartItem.Quantity
 		}
 	}
 
-	
-	log.Printf("Total price calculated: %d\n", totalPrice)
-
-	// Ensure the correct product price is calculated
 	if correctPrice == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Product not found in cart",
@@ -76,11 +72,10 @@ func Checkout(c *gin.Context) {
 		return
 	}
 
-	// Compare the user-provided price with the correct price of the product
 	if checkoutRequest.Price != correctPrice {
 		remainingAmount := int(correctPrice) - int(checkoutRequest.Price)
 		if remainingAmount < 0 {
-			remainingAmount = 0 //avoid negative values
+			remainingAmount = 0
 		}
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":           "Incorrect price",
@@ -91,17 +86,15 @@ func Checkout(c *gin.Context) {
 		return
 	}
 
-	// Create a new Checkout object
 	checkout := models.Checkout{
 		Name:        checkoutRequest.Name,
 		PhoneNumber: checkoutRequest.PhoneNumber,
 		Address:     checkoutRequest.Address,
 		UserID:      checkoutRequest.UserID,
 		ProductID:   checkoutRequest.ProductID,
-		Price:       totalPrice, 
+		Price:       totalPrice,
 	}
 
-	// Save checkout details to the database
 	if result := config.DB.Create(&checkout); result.Error != nil {
 		log.Printf("Error saving checkout to database: %v", result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save checkout details"})
@@ -110,7 +103,7 @@ func Checkout(c *gin.Context) {
 
 	orderDetails := models.OrderDetails{
 		CheckoutID: checkout.ID,
-		Quantity:   1, 
+		Quantity:   1,
 		Price:      float64(totalPrice),
 		UserId:     checkoutRequest.UserID,
 		TotalPrice: float64(totalPrice),
@@ -125,14 +118,20 @@ func Checkout(c *gin.Context) {
 		return
 	}
 
+	orderEvent := OrderEvent{
+		OrderID:    orderDetails.ID,
+		UserID:     orderDetails.UserId,
+		TotalPrice: orderDetails.TotalPrice,
+		Status:     orderDetails.Status,
+	}
+	if err := kafka.PublishEvent("order_events", orderEvent); err != nil {
+		log.Printf("Failed to publish order event: %v", err)
+	}
 
-	log.Printf("Checkout saved successfully: %v", checkout)
-
-	
 	c.JSON(http.StatusOK, gin.H{
 		"message":      "Checkout successful",
 		"total_price":  totalPrice,
-		"make_payment": "/payment", 
+		"make_payment": "/payment",
 		"checkout_id":  checkout.ID,
 	})
 }
