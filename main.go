@@ -1,4 +1,4 @@
-// Updated main.go with Kafka integration
+
 package main
 
 import (
